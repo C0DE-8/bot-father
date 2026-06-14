@@ -155,7 +155,7 @@ router.all("/debug/poll-updates", async (req, res) => {
 router.post("/debug/message", async (req, res) => {
     try {
         const chatId = req.body.chatId || process.env.TELEGRAM_ADMIN_CHAT_ID;
-        const text = req.body.text || "Telegram debug message from voice support backend.";
+        const text = req.body.text || "Hello Queen debug message from backend.";
 
         if (!chatId) {
             return res.status(400).json({ ok: false, error: "chatId or TELEGRAM_ADMIN_CHAT_ID is required" });

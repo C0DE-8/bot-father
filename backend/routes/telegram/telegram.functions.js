@@ -64,7 +64,7 @@ function callKeyboard(callId) {
 
 // Builds the welcome text shown to the Telegram admin.
 function mainMenuText() {
-    return "Hello Queen 👑\n\nYour voice support panel is ready.\nChoose what you want to do:";
+    return "Hello Queen 👑\n\nYour command center is ready.\nChoose what you want to do:";
 }
 
 // Checks whether a message looks like an international phone number.
