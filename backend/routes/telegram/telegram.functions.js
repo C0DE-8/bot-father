@@ -1,4 +1,5 @@
 const db = require("../../db/database");
+const { createCall } = require("../call/call.functions");
 
 const pendingPhoneChats = new Map();
 
@@ -118,55 +119,6 @@ async function sendTelegramMessage(chatId, text, options) {
         text,
         ...(options || {})
     });
-}
-
-// Creates a call row and optionally triggers the call provider.
-async function createCall(phone, chatId) {
-    const baseUrl = publicUrl();
-    const audioName = process.env.DEFAULT_AUDIO_FILE || "welcome.mp3";
-    const audioUrl = `${baseUrl}/audio/${audioName}`;
-
-    const insertResult = await db.query(
-        "INSERT INTO calls (phone, status, telegram_chat_id, audio_url) VALUES (?, ?, ?, ?)",
-        [phone, "QUEUED", chatId || null, audioUrl]
-    );
-
-    const callId = insertResult.insertId;
-    const providerPayload = {
-        callId,
-        phone,
-        audioUrl,
-        voiceUrl: `${baseUrl}/call/${callId}/voice`,
-        dtmfWebhookUrl: `${baseUrl}/webhook/dtmf`
-    };
-
-    let providerResponse = null;
-    let status = "READY";
-
-    if (process.env.CALL_PROVIDER_URL) {
-        const response = await fetch(process.env.CALL_PROVIDER_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(providerPayload)
-        });
-
-        providerResponse = await response.json().catch(() => ({ status: response.status }));
-        status = response.ok ? "CALLING" : "PROVIDER_FAILED";
-
-        await db.query(
-            "UPDATE calls SET status = ?, provider_call_id = ? WHERE id = ?",
-            [status, providerResponse.callId || providerResponse.id || providerResponse.sid || null, callId]
-        );
-    } else {
-        await db.query("UPDATE calls SET status = ? WHERE id = ?", [status, callId]);
-    }
-
-    await db.query(
-        "INSERT INTO call_logs (call_id, event, payload) VALUES (?, ?, ?)",
-        [callId, "TELEGRAM_STARTCALL", JSON.stringify({ providerPayload, providerResponse })]
-    );
-
-    return { callId, status, providerPayload, providerResponse };
 }
 
 // Handles Telegram text commands such as /start and /startcall.

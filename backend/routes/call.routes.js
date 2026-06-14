@@ -1,10 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db/database");
-
-function publicUrl() {
-    return (process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, "");
-}
+const { apiUrl, createCall } = require("./call/call.functions");
 
 async function notifyTelegram(chatId, text) {
     if (!process.env.TELEGRAM_BOT_TOKEN || !chatId) {
@@ -26,67 +23,16 @@ router.post("/create", async (req, res) => {
             return res.status(400).json({ error: "phone is required" });
         }
 
-        const baseUrl = publicUrl();
-        const audioName = audioFile || process.env.DEFAULT_AUDIO_FILE || "welcome.mp3";
-        const audioUrl = `${baseUrl}/audio/${audioName}`;
-
-        const insertResult = await db.query(
-            "INSERT INTO calls (phone, status, telegram_chat_id, audio_url) VALUES (?, ?, ?, ?)",
-            [phone, "QUEUED", telegramChatId || null, audioUrl]
-        );
-
-        const callId = insertResult.insertId;
-        const providerPayload = {
-            callId,
-            phone,
-            audioUrl,
-            voiceUrl: `${baseUrl}/call/${callId}/voice`,
-            dtmfWebhookUrl: `${baseUrl}/webhook/dtmf`
-        };
-
-        let providerResponse = null;
-        let providerTriggered = false;
-
-        if (process.env.CALL_PROVIDER_URL) {
-            const response = await fetch(process.env.CALL_PROVIDER_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(providerPayload)
-            });
-
-            providerResponse = await response.json().catch(() => ({ status: response.status }));
-            providerTriggered = response.ok;
-
-            await db.query(
-                "UPDATE calls SET status = ?, provider_call_id = ? WHERE id = ?",
-                [
-                    response.ok ? "CALLING" : "PROVIDER_FAILED",
-                    providerResponse.callId || providerResponse.id || providerResponse.sid || null,
-                    callId
-                ]
-            );
-        } else {
-            await db.query("UPDATE calls SET status = ? WHERE id = ?", ["READY", callId]);
-        }
-
-        await db.query(
-            "INSERT INTO call_logs (call_id, event, payload) VALUES (?, ?, ?)",
-            [callId, "CALL_CREATED", JSON.stringify({ providerTriggered, providerPayload, providerResponse })]
-        );
+        const call = await createCall(phone, telegramChatId, audioFile);
 
         await notifyTelegram(
             telegramChatId,
-            `Call ${callId} started for ${phone}. Status: ${providerTriggered ? "CALLING" : "READY"}`
+            `✅ Call ${call.callId} started\n📱 Number: ${phone}\n📌 Status: ${call.status}`
         );
 
         res.json({
             message: "Call created",
-            callId,
-            providerTriggered,
-            providerResponse,
-            audioUrl,
-            voiceUrl: providerPayload.voiceUrl,
-            dtmfWebhookUrl: providerPayload.dtmfWebhookUrl
+            ...call
         });
     } catch (error) {
         console.error("Create call failed:", error);
@@ -108,7 +54,7 @@ router.get("/:id/voice", async (req, res) => {
         }
 
         const call = rows[0];
-        const dtmfUrl = `${publicUrl()}/webhook/dtmf?callId=${call.id}`;
+        const dtmfUrl = `${apiUrl(`/webhook/dtmf?callId=${call.id}`)}`;
 
         await db.query(
             "INSERT INTO call_logs (call_id, event, payload) VALUES (?, ?, ?)",
