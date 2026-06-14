@@ -318,7 +318,7 @@ router.post("/startcall", async (req, res) => {
 
         await sendTelegramMessage(
             targetChatId,
-            `Call ${call.callId} started for ${phone}. Status: ${call.status}`,
+            `✅ Call ${call.callId} started\n📱 Number: ${phone}\n📌 Status: ${call.status}`,
             { reply_markup: callKeyboard(call.callId) }
         );
 
